@@ -17,6 +17,7 @@
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/textarea/textarea.js';
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/checkbox/checkbox.js';
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/switch/switch.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/tag/tag.js';
 
 
     class DungeonMapper extends LitElement {
@@ -172,6 +173,15 @@
                 box-sizing: border-box;
                 margin: 0;
             }
+        }
+
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .suggestion-tag {
+            cursor: pointer;
         }
       `;
 
@@ -479,6 +489,17 @@
                     value=${room.name || ''}
                     @sl-input=${(e) => this.updateCurrentRoom({ name: e.target.value })}
                 ></sl-input>
+
+                <div class="suggestions">
+                    ${['Start', 'End', 'Hallway', 'Chamber', 'Corridor', 'Trap', 'Stairs'].map(name => html`
+                        <sl-tag
+                            size="small"
+                            variant="neutral"
+                            class="suggestion-tag"
+                            @click=${() => this.updateCurrentRoom({ name })}
+                        >${name}</sl-tag>
+                    `)}
+                </div>
 
                 <sl-textarea
                     label="Notes"
