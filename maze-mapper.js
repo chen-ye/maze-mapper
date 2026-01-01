@@ -26,6 +26,7 @@
           height: 100vh;
           width: 100vw;
           overflow: hidden;
+          touch-action: none; /* Prevent browser handling of gestures */
         }
 
 
@@ -157,7 +158,19 @@
             justify-content: space-between;
             align-items: center;
             font-weight: bold;
+            font-weight: bold;
             color: var(--sl-color-primary-600);
+        }
+
+        @media (max-width: 600px) {
+            .details-panel {
+                width: 100%;
+                left: 0;
+                bottom: 0;
+                border-radius: var(--sl-border-radius-medium) var(--sl-border-radius-medium) 0 0;
+                box-sizing: border-box;
+                margin: 0;
+            }
         }
       `;
 
@@ -374,19 +387,22 @@
       }
 
       startDrag(e) {
+        // e.preventDefault(); // Don't prevent default here for mouse, might break focus? For touch it's handled by CSS touch-action
         this.isDragging = true;
         this.dragStart = { x: e.clientX - this.panX, y: e.clientY - this.panY };
+        e.currentTarget.setPointerCapture(e.pointerId);
       }
 
       doDrag(e) {
         if (!this.isDragging) return;
-        e.preventDefault();
+        e.preventDefault(); // Prevent scroll on touch if any
         this.panX = e.clientX - this.dragStart.x;
         this.panY = e.clientY - this.dragStart.y;
       }
 
-      stopDrag() {
+      stopDrag(e) {
         this.isDragging = false;
+        e.currentTarget.releasePointerCapture(e.pointerId);
       }
 
       // --- Rendering ---
@@ -525,10 +541,11 @@
           <!-- Map Viewport -->
           <div
             class="map-viewport"
-            @mousedown=${this.startDrag}
-            @mousemove=${this.doDrag}
-            @mouseup=${this.stopDrag}
-            @mouseleave=${this.stopDrag}
+            style="background-position: calc(50% + ${this.panX}px) calc(50% + ${this.panY}px);"
+            @pointerdown=${this.startDrag}
+            @pointermove=${this.doDrag}
+            @pointerup=${this.stopDrag}
+            @pointercancel=${this.stopDrag}
             @wheel=${this.handleWheel}
           >
             <div class="map-world" style="transform: translate(${this.panX}px, ${this.panY}px);">
