@@ -37,7 +37,7 @@
         .map-viewport {
           background-color: var(--sl-color-neutral-100);
           background-image: radial-gradient(var(--sl-color-neutral-300) 1px, transparent 0);
-          background-size: 20px 20px;
+          background-size: var(--sl-spacing-large) var(--sl-spacing-large);
           position: relative;
           overflow: hidden;
           cursor: grab;
@@ -60,13 +60,13 @@
           position: absolute;
           width: 60px;
           height: 60px;
-          background: var(--sl-color-white);
+          background: var(--sl-color-neutral-0);
           border: 2px solid var(--sl-color-neutral-300);
           border-radius: var(--sl-border-radius-medium);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 0.7rem;
+          font-size: var(--sl-font-size-x-small);
           text-align: center;
           color: var(--sl-color-neutral-700);
           box-shadow: var(--sl-shadow-small);
@@ -78,9 +78,9 @@
         .room-node.current {
           background: var(--sl-color-primary-600);
           border-color: var(--sl-color-primary-700);
-          color: var(--sl-color-white);
+          color: var(--sl-color-neutral-0);
           z-index: 10;
-          box-shadow: 0 0 15px var(--sl-color-primary-200);
+          box-shadow: 0 0 var(--sl-spacing-medium) var(--sl-color-primary-200);
         }
 
         .room-node.hazard {
@@ -91,14 +91,14 @@
         .room-node.hazard::after {
           content: '!';
           position: absolute;
-          top: -8px;
-          right: -8px;
+          top: calc(-1 * var(--sl-spacing-x-small));
+          right: calc(-1 * var(--sl-spacing-x-small));
           background: var(--sl-color-danger-600);
-          color: white;
+          color: var(--sl-color-neutral-0);
           border-radius: 50%;
           width: 16px;
           height: 16px;
-          font-weight: bold;
+          font-weight: var(--sl-font-weight-bold);
           line-height: 16px;
         }
 
@@ -114,7 +114,7 @@
 
         /* Sidebar/Controls */
         .controls {
-          background: var(--sl-color-white);
+          background: var(--sl-color-neutral-0);
           border-left: 1px solid var(--sl-color-neutral-200);
           padding: var(--sl-spacing-large);
           display: flex;
@@ -128,7 +128,7 @@
           display: grid;
           grid-template-columns: 1fr 1fr 1fr;
           grid-template-rows: 1fr 1fr 1fr;
-          gap: 4px;
+          gap: var(--sl-spacing-2x-small);
           width: 120px;
           margin: 0 auto;
         }
@@ -156,7 +156,7 @@
           display: grid;
           grid-template-columns: 1fr 1fr;
           gap: var(--sl-spacing-small);
-          font-family: monospace;
+          font-family: var(--sl-font-mono);
           color: var(--sl-color-neutral-500);
           font-size: var(--sl-font-size-small);
           margin-bottom: var(--sl-spacing-medium);
@@ -164,7 +164,7 @@
         }
 
         .save-status {
-          font-size: 0.75rem;
+          font-size: var(--sl-font-size-small);
           color: var(--sl-color-success-600);
           text-align: right;
           min-height: 1rem;
@@ -173,7 +173,7 @@
         .exits-grid {
           display: grid;
           grid-template-columns: 1fr 1fr 1fr 1fr;
-          gap: 5px;
+          gap: var(--sl-spacing-2x-small);
         }
 
         .data-tools {
@@ -521,7 +521,7 @@
             <sl-divider></sl-divider>
 
             <div style="margin-top: auto;">
-                <label style="font-size: var(--sl-input-label-font-size-medium); display:block; margin-bottom: 5px;">Data Tools</label>
+                <label style="font-size: var(--sl-input-label-font-size-medium); display:block; margin-bottom: var(--sl-spacing-2x-small);">Data Tools</label>
                 <div class="data-tools">
                     <sl-button size="small" @click=${this.exportData}>
                         <sl-icon slot="prefix" name="box-arrow-up"></sl-icon> Export
