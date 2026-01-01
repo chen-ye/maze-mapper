@@ -36,7 +36,7 @@
           background-color: var(--sl-color-neutral-100);
           background-image: radial-gradient(var(--sl-color-neutral-300) 1px, transparent 0);
           background-size: var(--sl-spacing-large) var(--sl-spacing-large);
-          background-position: center center;
+          background-position: calc(50% + var(--pan-x, 0px)) calc(50% + var(--pan-y, 0px));
           position: relative;
           height: 100%;
           width: 100%;
@@ -51,8 +51,9 @@
           top: 50%;
           left: 50%;
           transform-origin: 0 0;
-          transition: transform 0.1s ease-out;
-          will-change: transform;
+          transform: translate(var(--pan-x, 0px), var(--pan-y, 0px));
+          will-change: transform; /* optimizing for transform changes */
+          transition: none; /* Let drag be instant/reactive */
         }
 
         .room-node {
@@ -198,7 +199,8 @@
         this.TILE_SIZE = 100;
         this.saveStatus = '';
         this.importOpen = false;
-        this.editingId = null;
+        this.interactionStart = null;
+        this.isPanning = false;
       }
 
       connectedCallback() {
@@ -386,32 +388,75 @@
         this.panY -= e.deltaY;
       }
 
+      getPoint(e) {
+          if (e.touches && e.touches.length > 0) {
+              return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }
+          return { x: e.clientX, y: e.clientY };
+      }
+
       startDrag(e) {
-        // e.preventDefault(); // Don't prevent default here for mouse, might break focus? For touch it's handled by CSS touch-action
-        this.isDragging = true;
+        this.interactionStart = {
+            x: e.clientX,
+            y: e.clientY,
+            target: e.composedPath()[0]
+        };
+        this.isPanning = false;
         this.dragStart = { x: e.clientX - this.panX, y: e.clientY - this.panY };
         e.currentTarget.setPointerCapture(e.pointerId);
       }
 
       doDrag(e) {
-        if (!this.isDragging) return;
-        e.preventDefault(); // Prevent scroll on touch if any
-        this.panX = e.clientX - this.dragStart.x;
-        this.panY = e.clientY - this.dragStart.y;
+        if (!this.interactionStart) return;
+
+        // Check threshold
+        if (!this.isPanning) {
+            const dx = e.clientX - this.interactionStart.x;
+            const dy = e.clientY - this.interactionStart.y;
+            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+                this.isPanning = true;
+            }
+        }
+
+        if (this.isPanning) {
+            e.preventDefault();
+            this.panX = e.clientX - this.dragStart.x;
+            this.panY = e.clientY - this.dragStart.y;
+        }
       }
 
       stopDrag(e) {
-        this.isDragging = false;
         e.currentTarget.releasePointerCapture(e.pointerId);
+
+        if (!this.isPanning && this.interactionStart) {
+            // It was a click
+            this.handleClick(this.interactionStart.target);
+        }
+
+        this.interactionStart = null;
+        this.isPanning = false;
+      }
+
+      handleClick(target) {
+          // Find closest relevant element
+          const roomEl = target.closest('.room-node');
+          if (roomEl) {
+              if (roomEl.classList.contains('phantom')) {
+                  const dir = roomEl.dataset.dir;
+                  if (dir) this.addRoomAt(dir);
+              } else {
+                  // Standard room
+                  const x = parseInt(roomEl.dataset.x);
+                  const y = parseInt(roomEl.dataset.y);
+                  if (!isNaN(x) && !isNaN(y)) {
+                      this.currentX = x;
+                      this.currentY = y;
+                  }
+              }
+          }
       }
 
       // --- Rendering ---
-
-      stopRename(e) {
-         if(e.key === 'Enter' || e.type === 'blur') {
-             this.editingId = null;
-         }
-      }
 
       renderDetailsPanel() {
         if (!this.currentRoom) return '';
@@ -480,21 +525,10 @@
             <div
               class="room-node ${isCurrent ? 'current' : ''} ${hasHazard ? 'hazard' : ''} ${!room.explored ? 'unexplored' : ''}"
               style="left: ${left}px; top: ${top}px;"
-              @click=${() => { this.currentX = room.x; this.currentY = room.y; }}
-              @dblclick=${() => this.editingId = room.id}
+              data-x="${room.x}"
+              data-y="${room.y}"
             >
-              ${this.editingId === room.id
-                ? html`<input
-                        autofocus
-                        value="${room.name}"
-                        style="width: 50px; font-size: 10px;"
-                        @click=${(e) => e.stopPropagation()}
-                        @keydown=${(e) => this.stopRename(e)}
-                        @blur=${(e) => this.stopRename(e)}
-                        @input=${(e) => this.updateCurrentRoom({ name: e.target.value })}
-                       >`
-                : (room.name || 'Room')
-              }
+              ${room.name || 'Room'}
             </div>
           `;
         });
@@ -525,7 +559,7 @@
                 <div
                     class="room-node phantom"
                     style="left: ${left}px; top: ${top}px;"
-                    @click=${() => this.addRoomAt(dir)}
+                    data-dir="${dir}"
                     title="Add Room"
                 >
                     <sl-icon name="plus"></sl-icon>
@@ -541,14 +575,14 @@
           <!-- Map Viewport -->
           <div
             class="map-viewport"
-            style="background-position: calc(50% + ${this.panX}px) calc(50% + ${this.panY}px);"
+            style="--pan-x: ${this.panX}px; --pan-y: ${this.panY}px;"
             @pointerdown=${this.startDrag}
             @pointermove=${this.doDrag}
             @pointerup=${this.stopDrag}
             @pointercancel=${this.stopDrag}
             @wheel=${this.handleWheel}
           >
-            <div class="map-world" style="transform: translate(${this.panX}px, ${this.panY}px);">
+            <div class="map-world">
               ${this.renderPhantoms()}
               ${this.renderMap()}
             </div>
