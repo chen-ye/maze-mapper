@@ -16,23 +16,19 @@
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/input/input.js';
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/textarea/textarea.js';
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/checkbox/checkbox.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/switch/switch.js';
 
 
     class DungeonMapper extends LitElement {
       static styles = css`
         :host {
-          display: grid;
-          grid-template-columns: 1fr 350px;
+          display: block;
           height: 100vh;
           width: 100vw;
+          overflow: hidden;
         }
 
-        @media (max-width: 768px) {
-          :host {
-            grid-template-columns: 1fr;
-            grid-template-rows: 1fr 1fr;
-          }
-        }
+
 
         /* Map Area */
         .map-viewport {
@@ -41,8 +37,8 @@
           background-size: var(--sl-spacing-large) var(--sl-spacing-large);
           background-position: center center;
           position: relative;
-          overflow: hidden;
-          cursor: grab;
+          height: 100%;
+          width: 100%;
         }
 
         .map-viewport:active {
@@ -101,7 +97,26 @@
           width: 16px;
           height: 16px;
           font-weight: var(--sl-font-weight-bold);
+          font-weight: var(--sl-font-weight-bold);
           line-height: 16px;
+        }
+
+        .room-node.unexplored {
+            background-color: var(--sl-color-neutral-200);
+            color: var(--sl-color-neutral-500);
+        }
+
+        .room-node.phantom {
+            opacity: 0.6;
+            border-style: dashed;
+            background: transparent;
+            cursor: pointer;
+            z-index: 5; /* Below current room but clickable */
+        }
+        .room-node.phantom:hover {
+            opacity: 1;
+            background: var(--sl-color-primary-50);
+            border-color: var(--sl-color-primary-400);
         }
 
         /* Connections */
@@ -114,75 +129,35 @@
         .connector.vertical { width: 2px; height: 40px; }
         .connector.horizontal { width: 40px; height: 2px; }
 
-        /* Sidebar/Controls */
-        .controls {
-          background: var(--sl-color-neutral-0);
-          border-left: 1px solid var(--sl-color-neutral-200);
-          padding: var(--sl-spacing-large);
-          display: flex;
-          flex-direction: column;
-          gap: var(--sl-spacing-medium);
-          overflow-y: auto;
-          box-shadow: var(--sl-shadow-large);
-        }
-
-        .d-pad {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr;
-          grid-template-rows: 1fr 1fr 1fr;
-          gap: var(--sl-spacing-2x-small);
-          width: 120px;
-          margin: 0 auto;
-        }
-
-        .d-pad sl-button {
-          width: 100%;
-          height: 100%;
-        }
-
-        .header-row {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: var(--sl-spacing-small);
-        }
-
-        h1 {
-          font-size: var(--sl-font-size-large);
-          font-weight: var(--sl-font-weight-bold);
-          margin: 0;
-          color: var(--sl-color-primary-600);
-        }
-
-        .stat-block {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: var(--sl-spacing-small);
-          font-family: var(--sl-font-mono);
-          color: var(--sl-color-neutral-500);
-          font-size: var(--sl-font-size-small);
-          margin-bottom: var(--sl-spacing-medium);
-          text-align: center;
-        }
-
-        .save-status {
-          font-size: var(--sl-font-size-small);
-          color: var(--sl-color-success-600);
-          text-align: right;
-          min-height: 1rem;
-        }
-
-        .exits-grid {
-          display: grid;
-          grid-template-columns: 1fr 1fr 1fr 1fr;
-          gap: var(--sl-spacing-2x-small);
-        }
-
-        .data-tools {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
+        .hud {
+            position: absolute;
+            top: var(--sl-spacing-medium);
+            right: var(--sl-spacing-medium);
+            display: flex;
             gap: var(--sl-spacing-small);
-            margin-top: auto; /* Push to bottom if space allows */
+        }
+
+        .details-panel {
+            position: absolute;
+            bottom: var(--sl-spacing-medium);
+            left: var(--sl-spacing-medium);
+            width: 300px;
+            background: var(--sl-color-neutral-0);
+            border-radius: var(--sl-border-radius-medium);
+            box-shadow: var(--sl-shadow-large);
+            padding: var(--sl-spacing-medium);
+            display: flex;
+            flex-direction: column;
+            gap: var(--sl-spacing-small);
+            z-index: 100;
+        }
+
+        .details-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: bold;
+            color: var(--sl-color-primary-600);
         }
       `;
 
@@ -194,7 +169,8 @@
         panY: { type: Number },
         isDragging: { type: Boolean },
         saveStatus: { type: String },
-        importOpen: { type: Boolean }
+        importOpen: { type: Boolean },
+        editingId: { type: String }
       };
 
       constructor() {
@@ -209,6 +185,7 @@
         this.TILE_SIZE = 100;
         this.saveStatus = '';
         this.importOpen = false;
+        this.editingId = null;
       }
 
       connectedCallback() {
@@ -229,7 +206,7 @@
         return this.rooms[this.currentRoomId];
       }
 
-      createRoom(x, y, name = "New Room") {
+      createRoom(x, y, name = "") {
         const id = `${x},${y}`;
         if (this.rooms[id]) return;
 
@@ -242,6 +219,7 @@
             name,
             notes: "",
             hazards: "",
+            explored: true,
             exits: { n: false, s: false, e: false, w: false }
           }
         };
@@ -276,7 +254,7 @@
 
         // Create new room if needed
         if (!this.rooms[newId]) {
-          this.createRoom(newX, newY, "Unexplored");
+          this.createRoom(newX, newY, "");
         }
 
         // Connect BACK from new room
@@ -373,6 +351,20 @@
         }
       }
 
+      addRoomAt(dir) {
+        let dx = 0, dy = 0;
+        if (dir === 'n') dy = 1;
+        if (dir === 's') dy = -1;
+        if (dir === 'e') dx = 1;
+        if (dir === 'w') dx = -1;
+
+        const newX = this.currentX + dx;
+        const newY = this.currentY + dy;
+
+        // Ensure connection logic handles creation
+        this.move(dir);
+      }
+
       // --- Map Interaction ---
 
       handleWheel(e) {
@@ -399,6 +391,55 @@
 
       // --- Rendering ---
 
+      stopRename(e) {
+         if(e.key === 'Enter' || e.type === 'blur') {
+             this.editingId = null;
+         }
+      }
+
+      renderDetailsPanel() {
+        if (!this.currentRoom) return '';
+        const room = this.currentRoom;
+
+        return html`
+            <div class="details-panel" @mousedown=${(e) => e.stopPropagation()}>
+                <div class="details-header">
+                    <span>Room Details</span>
+                    <sl-switch
+                        size="small"
+                        ?checked=${room.explored}
+                        @sl-change=${(e) => this.updateCurrentRoom({ explored: e.target.checked })}
+                    >Explored</sl-switch>
+                </div>
+
+                <sl-input
+                    label="Name"
+                    size="small"
+                    value=${room.name || ''}
+                    @sl-input=${(e) => this.updateCurrentRoom({ name: e.target.value })}
+                ></sl-input>
+
+                <sl-textarea
+                    label="Notes"
+                    size="small"
+                    rows="2"
+                    resize="none"
+                    value=${room.notes || ''}
+                    @sl-input=${(e) => this.updateCurrentRoom({ notes: e.target.value })}
+                ></sl-textarea>
+
+                <sl-input
+                    label="Hazards"
+                    size="small"
+                    value=${room.hazards || ''}
+                    @sl-input=${(e) => this.updateCurrentRoom({ hazards: e.target.value })}
+                >
+                    <sl-icon slot="prefix" name="exclamation-triangle"></sl-icon>
+                </sl-input>
+            </div>
+        `;
+      }
+
       renderMap() {
         const DIRECTIONS = [
           { dir: 'n', type: 'vertical', dx: 0, dy: -50 },
@@ -421,13 +462,59 @@
                    : ''
             )}
             <div
-              class="room-node ${isCurrent ? 'current' : ''} ${hasHazard ? 'hazard' : ''}"
+              class="room-node ${isCurrent ? 'current' : ''} ${hasHazard ? 'hazard' : ''} ${!room.explored ? 'unexplored' : ''}"
               style="left: ${left}px; top: ${top}px;"
               @click=${() => { this.currentX = room.x; this.currentY = room.y; }}
+              @dblclick=${() => this.editingId = room.id}
             >
-              ${room.name || 'Room'}
+              ${this.editingId === room.id
+                ? html`<input
+                        autofocus
+                        value="${room.name}"
+                        style="width: 50px; font-size: 10px;"
+                        @click=${(e) => e.stopPropagation()}
+                        @keydown=${(e) => this.stopRename(e)}
+                        @blur=${(e) => this.stopRename(e)}
+                        @input=${(e) => this.updateCurrentRoom({ name: e.target.value })}
+                       >`
+                : (room.name || 'Room')
+              }
             </div>
           `;
+        });
+      }
+
+      renderPhantoms() {
+        if(!this.currentRoom) return null;
+
+        const DIRECTIONS = [
+          { dir: 'n', dx: 0, dy: 1 },
+          { dir: 's', dx: 0, dy: -1 },
+          { dir: 'e', dx: 1, dy: 0 },
+          { dir: 'w', dx: -1, dy: 0 }
+        ];
+
+        return repeat(DIRECTIONS, (d) => d.dir, ({dir, dx, dy}) => {
+             const targetX = this.currentX + dx;
+             const targetY = this.currentY + dy;
+             const targetId = `${targetX},${targetY}`;
+
+             // If room exists, no phantom
+             if(this.rooms[targetId]) return '';
+
+             const left = targetX * this.TILE_SIZE;
+             const top = -targetY * this.TILE_SIZE;
+
+             return html`
+                <div
+                    class="room-node phantom"
+                    style="left: ${left}px; top: ${top}px;"
+                    @click=${() => this.addRoomAt(dir)}
+                    title="Add Room"
+                >
+                    <sl-icon name="plus"></sl-icon>
+                </div>
+             `;
         });
       }
 
@@ -445,105 +532,24 @@
             @wheel=${this.handleWheel}
           >
             <div class="map-world" style="transform: translate(${this.panX}px, ${this.panY}px);">
+              ${this.renderPhantoms()}
               ${this.renderMap()}
             </div>
           </div>
 
-          <!-- Controls Sidepanel -->
-          <div class="controls">
-            <div class="header-row">
-                <h1>Mapper</h1>
-                <div class="save-status">${this.saveStatus}</div>
-            </div>
+          ${this.renderDetailsPanel()}
 
-            <div class="stat-block">
-                <div>X: ${this.currentX}</div>
-                <div>Y: ${this.currentY}</div>
-            </div>
-
-            <!-- Navigation -->
-            <sl-card class="nav-card">
-              <div slot="header">Navigation</div>
-              <div class="d-pad">
-                <div></div>
-                <sl-button @click=${() => this.move('n')}>N</sl-button>
-                <div></div>
-                <sl-button @click=${() => this.move('w')}>W</sl-button>
-                <div style="display:grid; place-items:center; color:var(--sl-color-neutral-400);">
-                    <sl-icon name="geo-alt-fill"></sl-icon>
-                </div>
-                <sl-button @click=${() => this.move('e')}>E</sl-button>
-                <div></div>
-                <sl-button @click=${() => this.move('s')}>S</sl-button>
-                <div></div>
-              </div>
-            </sl-card>
-
-            <sl-divider></sl-divider>
-
-            <!-- Room Editor -->
-            <sl-input
-                label="Room Name"
-                value=${room.name || ''}
-                @sl-input=${(e) => this.updateCurrentRoom({ name: e.target.value })}
-            ></sl-input>
-
-            <sl-textarea
-                label="Notes"
-                rows="3"
-                resize="auto"
-                value=${room.notes || ''}
-                @sl-input=${(e) => this.updateCurrentRoom({ notes: e.target.value })}
-            ></sl-textarea>
-
-             <sl-input
-                label="Hazards / Enemies"
-                help-text="Mark hazards to highlight room on map"
-                value=${room.hazards || ''}
-                @sl-input=${(e) => this.updateCurrentRoom({ hazards: e.target.value })}
-            >
-                <sl-icon slot="prefix" name="exclamation-triangle"></sl-icon>
-            </sl-input>
-
-            <div style="margin-top: var(--sl-spacing-medium);">
-                <label style="font-size: var(--sl-input-label-font-size-medium);">Visible Exits</label>
-                <div class="exits-grid">
-                    <sl-checkbox
-                        ?checked=${room.exits?.n}
-                        @sl-change=${(e) => this.updateCurrentRoom({ exits: { ...room.exits, n: e.target.checked } })}
-                    >N</sl-checkbox>
-                    <sl-checkbox
-                        ?checked=${room.exits?.s}
-                        @sl-change=${(e) => this.updateCurrentRoom({ exits: { ...room.exits, s: e.target.checked } })}
-                    >S</sl-checkbox>
-                    <sl-checkbox
-                        ?checked=${room.exits?.e}
-                        @sl-change=${(e) => this.updateCurrentRoom({ exits: { ...room.exits, e: e.target.checked } })}
-                    >E</sl-checkbox>
-                    <sl-checkbox
-                        ?checked=${room.exits?.w}
-                        @sl-change=${(e) => this.updateCurrentRoom({ exits: { ...room.exits, w: e.target.checked } })}
-                    >W</sl-checkbox>
-                </div>
-            </div>
-
-            <sl-divider></sl-divider>
-
-            <div style="margin-top: auto;">
-                <label style="font-size: var(--sl-input-label-font-size-medium); display:block; margin-bottom: var(--sl-spacing-2x-small);">Data Tools</label>
-                <div class="data-tools">
-                    <sl-button size="small" @click=${this.exportData}>
-                        <sl-icon slot="prefix" name="box-arrow-up"></sl-icon> Export
-                    </sl-button>
-                    <sl-button size="small" @click=${this.importData}>
-                        <sl-icon slot="prefix" name="box-arrow-in-down"></sl-icon> Import
-                    </sl-button>
-                    <sl-button size="small" variant="danger" outline @click=${this.resetMap} style="grid-column: span 2;">
-                        <sl-icon slot="prefix" name="trash"></sl-icon> Reset Map
-                    </sl-button>
-                </div>
-            </div>
-
+          <!-- HUD -->
+          <div class="hud">
+             <sl-button size="small" @click=${this.exportData} title="Export">
+                 <sl-icon slot="prefix" name="box-arrow-up"></sl-icon>
+             </sl-button>
+             <sl-button size="small" @click=${this.importData} title="Import">
+                 <sl-icon slot="prefix" name="box-arrow-in-down"></sl-icon>
+             </sl-button>
+             <sl-button size="small" variant="danger" outline @click=${this.resetMap} title="Reset">
+                 <sl-icon slot="prefix" name="trash"></sl-icon>
+             </sl-button>
           </div>
         `;
       }
