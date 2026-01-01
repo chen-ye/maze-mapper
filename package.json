@@ -1,0 +1,23 @@
+{
+  "name": "maze-mapper",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/chen-ye/maze-mapper#readme",
+  "bugs": {
+    "url": "https://github.com/chen-ye/maze-mapper/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chen-ye/maze-mapper.git"
+  },
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "scripts": {
+    "start": "http-server .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

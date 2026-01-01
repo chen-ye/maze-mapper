@@ -1,5 +1,6 @@
 
     import { LitElement, html, css } from 'https://esm.sh/lit@3.1.2';
+    import { repeat } from 'https://esm.sh/lit@3.1.2/directives/repeat.js';
 
     // --- Shoelace Manual Setup ---
     import { setBasePath } from 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/utilities/base-path.js';
@@ -38,6 +39,7 @@
           background-color: var(--sl-color-neutral-100);
           background-image: radial-gradient(var(--sl-color-neutral-300) 1px, transparent 0);
           background-size: var(--sl-spacing-large) var(--sl-spacing-large);
+          background-position: center center;
           position: relative;
           overflow: hidden;
           cursor: grab;
@@ -398,19 +400,26 @@
       // --- Rendering ---
 
       renderMap() {
-        return Object.values(this.rooms).map(room => {
+        const DIRECTIONS = [
+          { dir: 'n', type: 'vertical', dx: 0, dy: -50 },
+          { dir: 's', type: 'vertical', dx: 0, dy: 50 },
+          { dir: 'e', type: 'horizontal', dx: 50, dy: 0 },
+          { dir: 'w', type: 'horizontal', dx: -50, dy: 0 }
+        ];
+
+        return repeat(Object.values(this.rooms), (room) => room.id, (room) => {
           const left = room.x * this.TILE_SIZE;
           const top = -room.y * this.TILE_SIZE;
 
           const isCurrent = room.x === this.currentX && room.y === this.currentY;
           const hasHazard = room.hazards && room.hazards.length > 0;
 
-          const connections = [];
-          if (room.exits.e) connections.push(html`<div class="connector horizontal" style="left: ${left + 50}px; top: ${top}px;"></div>`);
-          if (room.exits.s) connections.push(html`<div class="connector vertical" style="left: ${left}px; top: ${top + 50}px;"></div>`);
-
           return html`
-            ${connections}
+            ${repeat(DIRECTIONS, (d) => d.dir, ({dir, type, dx, dy}) =>
+                room.exits[dir]
+                   ? html`<div class="connector ${type}" style="left: ${left + dx}px; top: ${top + dy}px;"></div>`
+                   : ''
+            )}
             <div
               class="room-node ${isCurrent ? 'current' : ''} ${hasHazard ? 'hazard' : ''}"
               style="left: ${left}px; top: ${top}px;"
