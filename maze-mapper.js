@@ -18,6 +18,12 @@
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/checkbox/checkbox.js';
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/switch/switch.js';
     import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/tag/tag.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/dropdown/dropdown.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/menu/menu.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/menu-item/menu-item.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/dropdown/dropdown.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/menu/menu.js';
+    import 'https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.12.0/cdn/components/menu-item/menu-item.js';
 
 
     class DungeonMapper extends LitElement {
@@ -306,38 +312,154 @@
       // --- Persistence ---
 
       saveState() {
-        const state = {
-          rooms: this.rooms,
-          currentX: this.currentX,
-          currentY: this.currentY
+        // Load existing global state first (to not overwrite other maps)
+        const raw = localStorage.getItem('dungeon-mapper-v2');
+        let globalState = raw ? JSON.parse(raw) : { currentMap: this.mapName, maps: {} };
+
+        // Update CURRENT map data
+        globalState.maps[this.mapName] = {
+            rooms: this.rooms,
+            currentX: this.currentX,
+            currentY: this.currentY,
+            panX: this.panX,
+            panY: this.panY
         };
-        localStorage.setItem('dungeon-mapper-v1', JSON.stringify(state));
+        globalState.currentMap = this.mapName;
+
+        localStorage.setItem('dungeon-mapper-v2', JSON.stringify(globalState));
+        this.updateAvailableMaps(globalState);
 
         const now = new Date();
         this.saveStatus = `Saved ${now.getHours()}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
       }
 
       loadState() {
-        const raw = localStorage.getItem('dungeon-mapper-v1');
+        // Try v2 first
+        const raw = localStorage.getItem('dungeon-mapper-v2');
         if (raw) {
-          try {
-            const state = JSON.parse(raw);
-            this.rooms = state.rooms || {};
-            this.currentX = state.currentX || 0;
-            this.currentY = state.currentY || 0;
-            // Center on loaded position
-            this.panX = -this.currentX * this.TILE_SIZE;
-            this.panY = this.currentY * this.TILE_SIZE;
-            this.saveStatus = 'Loaded from storage';
-          } catch (e) {
-            console.error("Failed to load save", e);
-            this.saveStatus = 'Load failed';
-          }
+            try {
+                const globalState = JSON.parse(raw);
+                this.updateAvailableMaps(globalState);
+
+                const mapName = globalState.currentMap || Object.keys(globalState.maps)[0] || 'Untitled Map';
+                this.loadMap(mapName, globalState);
+            } catch (e) {
+                console.error("Failed to load v2 save", e);
+            }
+        } else {
+            // Fallback to v1 migration
+            const v1Raw = localStorage.getItem('dungeon-mapper-v1');
+            if (v1Raw) {
+                try {
+                    const v1State = JSON.parse(v1Raw);
+                    this.mapName = 'Imported Map';
+                    this.rooms = v1State.rooms || {};
+                    this.currentX = v1State.currentX || 0;
+                    this.currentY = v1State.currentY || 0;
+                    this.panX = -this.currentX * this.TILE_SIZE;
+                    this.panY = this.currentY * this.TILE_SIZE;
+                    this.saveState(); // Migrate to v2 immediately
+                    localStorage.removeItem('dungeon-mapper-v1'); // Clean up
+                } catch(e) {
+                     console.error("Failed to migrate v1 save", e);
+                }
+            }
         }
       }
 
+      loadMap(name, globalState = null) {
+          if (!globalState) {
+              const raw = localStorage.getItem('dungeon-mapper-v2');
+              globalState = raw ? JSON.parse(raw) : { maps: {} };
+          }
+
+          const mapData = globalState.maps[name];
+          if (mapData) {
+              this.mapName = name;
+              this.rooms = mapData.rooms || {};
+              this.currentX = mapData.currentX || 0;
+              this.currentY = mapData.currentY || 0;
+              this.panX = mapData.panX !== undefined ? mapData.panX : (-this.currentX * this.TILE_SIZE);
+              this.panY = mapData.panY !== undefined ? mapData.panY : (this.currentY * this.TILE_SIZE);
+              this.saveStatus = 'Loaded ' + name;
+          } else {
+              // Create new if not found
+              this.mapName = name;
+              this.rooms = {};
+              this.currentX = 0;
+              this.currentY = 0;
+              this.panX = 0;
+              this.panY = 0;
+              this.createRoom(0,0, "Start");
+          }
+           // Update available maps in case this was a new load
+          this.updateAvailableMaps(globalState);
+      }
+
+      updateAvailableMaps(globalState) {
+          this.availableMaps = Object.keys(globalState.maps || {});
+      }
+
+      renameMap(newName) {
+          if (!newName || newName === this.mapName) return;
+
+          const raw = localStorage.getItem('dungeon-mapper-v2');
+          let globalState = raw ? JSON.parse(raw) : { maps: {} };
+
+          // Copy data to new key
+          globalState.maps[newName] = globalState.maps[this.mapName];
+          // Delete old key
+          delete globalState.maps[this.mapName];
+          // Update current pointer
+          globalState.currentMap = newName;
+
+          localStorage.setItem('dungeon-mapper-v2', JSON.stringify(globalState));
+
+          this.mapName = newName;
+          this.updateAvailableMaps(globalState);
+          this.requestUpdate();
+      }
+
+      createNewMap() {
+          let name = "New Map";
+          let i = 1;
+          while(this.availableMaps.includes(name)) {
+              name = `New Map ${i++}`;
+          }
+          this.loadMap(name); // Will create empty because it doesn't exist
+          this.saveState();
+      }
+
+      deleteMap(name) {
+          if(!confirm(`Delete map "${name}"?`)) return;
+
+          const raw = localStorage.getItem('dungeon-mapper-v2');
+          let globalState = raw ? JSON.parse(raw) : { maps: {} };
+
+          delete globalState.maps[name];
+
+          if (Object.keys(globalState.maps).length === 0) {
+              // No maps left, create default
+              this.mapName = "Untitled Map";
+              this.rooms = {};
+              this.createRoom(0,0,"Start");
+              this.saveState();
+          } else if (name === this.mapName) {
+              // Deleted current map, load another
+              const nextMap = Object.keys(globalState.maps)[0];
+              this.loadMap(nextMap, globalState);
+              // Save state primarily to update globalState on disk with the deletion
+              globalState.currentMap = nextMap;
+              localStorage.setItem('dungeon-mapper-v2', JSON.stringify(globalState));
+          } else {
+              // Deleted other map, just update storage
+              localStorage.setItem('dungeon-mapper-v2', JSON.stringify(globalState));
+              this.updateAvailableMaps(globalState);
+          }
+      }
+
       resetMap() {
-        if(confirm("Are you sure? This will delete all map data.")) {
+        if(confirm("Are you sure? This will delete ALL data for the CURRENT map.")) {
             this.rooms = {};
             this.currentX = 0;
             this.currentY = 0;
@@ -350,10 +472,10 @@
       }
 
       exportData() {
-        const raw = localStorage.getItem('dungeon-mapper-v1');
+        const raw = localStorage.getItem('dungeon-mapper-v2');
         if(!raw) return alert("No data to export.");
         navigator.clipboard.writeText(raw).then(() => {
-            alert("Map data copied to clipboard! You can save this to a text file.");
+            alert("All map data copied to clipboard!");
         }).catch(err => {
             console.error(err);
             alert("Failed to copy to clipboard.");
@@ -362,16 +484,18 @@
 
       async importData() {
         // Simple prompt for paste
-        const raw = prompt("Paste your map JSON string here:");
+        const raw = prompt("Paste your map JSON string here (v2 format):");
         if (raw) {
             try {
                 // Validate JSON
-                JSON.parse(raw);
-                localStorage.setItem('dungeon-mapper-v1', raw);
+                const data = JSON.parse(raw);
+                if (!data.maps) throw new Error("Invalid v2 format");
+
+                localStorage.setItem('dungeon-mapper-v2', raw);
                 this.loadState();
-                alert("Map imported successfully!");
+                alert("Maps imported successfully!");
             } catch (e) {
-                alert("Invalid JSON data.");
+                alert("Invalid JSON data. Ensure it is a valid v2 export.");
             }
         }
       }
@@ -613,6 +737,40 @@
 
           <!-- HUD -->
           <div class="hud">
+             <sl-input
+                size="small"
+                value=${this.mapName}
+                @sl-change=${(e) => this.renameMap(e.target.value)}
+                style="width: 200px;"
+             ></sl-input>
+
+             <sl-dropdown>
+                <sl-button slot="trigger" size="small" caret>Maps</sl-button>
+                <sl-menu>
+                    <sl-menu-item @click=${this.createNewMap}>
+                        <sl-icon slot="prefix" name="plus"></sl-icon> New Map
+                    </sl-menu-item>
+                    <sl-divider></sl-divider>
+                    ${this.availableMaps.map(name => html`
+                        <sl-menu-item
+                            @click=${() => this.loadMap(name)}
+                            ?checked=${name === this.mapName}
+                        >
+                            ${name}
+                            ${name !== this.mapName ? html`
+                                <sl-icon-button
+                                    name="trash"
+                                    slot="suffix"
+                                    @click=${(e) => { e.stopPropagation(); this.deleteMap(name); }}
+                                ></sl-icon-button>
+                            ` : ''}
+                        </sl-menu-item>
+                    `)}
+                </sl-menu>
+             </sl-dropdown>
+
+             <sl-divider vertical></sl-divider>
+
              <sl-button size="small" @click=${this.exportData} title="Export">
                  <sl-icon slot="prefix" name="box-arrow-up"></sl-icon>
              </sl-button>
