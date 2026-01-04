@@ -110,6 +110,23 @@
           line-height: 16px;
         }
 
+        .room-node.link {
+            width: 30px;
+            height: 30px;
+            border-style: solid;
+            border-color: var(--sl-color-primary-400);
+            background: var(--sl-color-primary-50);
+            color: var(--sl-color-primary-600);
+            opacity: 0.8;
+            cursor: pointer;
+            z-index: 15; /* Above everything */
+            font-size: 10px;
+        }
+        .room-node.link:hover {
+            opacity: 1;
+            background: var(--sl-color-primary-100);
+        }
+
         .room-node.unexplored {
             background-color: var(--sl-color-neutral-200);
             color: var(--sl-color-neutral-500);
@@ -500,6 +517,41 @@
         }
       }
 
+      toggleConnection(dir) {
+        if (!this.currentRoom) return;
+
+        let dx = 0, dy = 0;
+        if (dir === 'n') dy = 1;
+        if (dir === 's') dy = -1;
+        if (dir === 'e') dx = 1;
+        if (dir === 'w') dx = -1;
+
+        const targetX = this.currentX + dx;
+        const targetY = this.currentY + dy;
+        const targetId = `${targetX},${targetY}`;
+        const targetRoom = this.rooms[targetId];
+
+        if (!targetRoom) return;
+
+        // Toggle exit on current room
+        const currentExits = { ...this.currentRoom.exits };
+        const isConnected = !!currentExits[dir];
+        currentExits[dir] = !isConnected;
+
+        // Toggle entrance on target room
+        const opposite = { n: 's', s: 'n', e: 'w', w: 'e' }[dir];
+        const targetExits = { ...targetRoom.exits };
+        targetExits[opposite] = !isConnected;
+
+        this.rooms = {
+            ...this.rooms,
+            [this.currentRoom.id]: { ...this.currentRoom, exits: currentExits },
+            [targetId]: { ...targetRoom, exits: targetExits }
+        };
+
+        this.saveState();
+      }
+
       addRoomAt(dir) {
         let dx = 0, dy = 0;
         if (dir === 'n') dy = 1;
@@ -578,6 +630,9 @@
               if (roomEl.classList.contains('phantom')) {
                   const dir = roomEl.dataset.dir;
                   if (dir) this.addRoomAt(dir);
+              } else if (roomEl.classList.contains('link')) {
+                  const dir = roomEl.dataset.dir;
+                  if (dir) this.toggleConnection(dir);
               } else {
                   // Standard room
                   const x = parseInt(roomEl.dataset.x);
@@ -694,12 +749,31 @@
              const targetY = this.currentY + dy;
              const targetId = `${targetX},${targetY}`;
 
-             // If room exists, no phantom
-             if(this.rooms[targetId]) return '';
-
              const left = targetX * this.TILE_SIZE;
              const top = -targetY * this.TILE_SIZE;
 
+             // If room exists...
+             if(this.rooms[targetId]) {
+                 // Check if NOT connected to current room
+                 if (!this.currentRoom.exits[dir]) {
+                     const linkLeft = (this.currentX * this.TILE_SIZE) + (dx * this.TILE_SIZE * 0.5);
+                     const linkTop = (-this.currentY * this.TILE_SIZE) - (dy * this.TILE_SIZE * 0.5);
+
+                     return html`
+                        <div
+                            class="room-node link"
+                            style="left: ${linkLeft}px; top: ${linkTop}px;"
+                            data-dir="${dir}"
+                            title="Connect"
+                        >
+                            <sl-icon name="link-45deg"></sl-icon>
+                        </div>
+                     `;
+                 }
+                 return '';
+             }
+
+             // Otherwise show phantom (create new)
              return html`
                 <div
                     class="room-node phantom"
