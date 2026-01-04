@@ -110,24 +110,65 @@
           line-height: 16px;
         }
 
-        .room-node.link {
-            width: 30px;
-            height: 30px;
-            border-style: solid;
-            border-color: var(--sl-color-primary-400);
-            background: var(--sl-color-primary-50);
-            color: var(--sl-color-primary-600);
-            opacity: 0.8;
-            cursor: pointer;
-            z-index: 15; /* Above everything */
-            font-size: 10px;
-        }
-        .room-node.link:hover {
-            opacity: 1;
-            background: var(--sl-color-primary-100);
+        .link-btn {
+            position: absolute;
+            transform: translate(-50%, -50%); /* Centered on the calculated point */
+            z-index: 15;
+            transition: opacity 0.2s;
         }
 
-        .room-node.unexplored {
+        .link-btn::part(base) {
+            background: rgba(var(--sl-color-primary-50-rgb), 0.5);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            border-color: var(--sl-color-primary-400);
+            color: var(--sl-color-primary-600);
+        }
+
+        .link-btn:hover::part(base) {
+            background: rgba(var(--sl-color-primary-100-rgb), 0.8);
+            opacity: 1;
+        }
+
+        .link-btn.unlink-btn::part(base) {
+             background: rgba(var(--sl-color-danger-50-rgb), 0.5);
+             border-color: var(--sl-color-danger-400);
+             color: var(--sl-color-danger-600);
+        }
+        .link-btn.unlink-btn:hover::part(base) {
+             background: rgba(var(--sl-color-danger-100-rgb), 0.8);
+        }
+
+        .room-node.phantom {
+            background-color: rgba(255, 255, 255, 0.5); /* Semi-transparent */
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            color: var(--sl-color-neutral-400);
+            border: 2px dashed var(--sl-color-neutral-300);
+        }
+        .room-node.phantom:hover {
+            background-color: var(--sl-color-primary-50);
+            color: var(--sl-color-primary-500);
+            border-color: var(--sl-color-primary-400);
+            opacity: 1 !important;
+        }
+
+        @media (hover: hover) {
+            /* On desktop, hide links by default */
+            .link-btn {
+                opacity: 0;
+            }
+
+            /* Show when hovering the current room (which precedes them in DOM) */
+            .room-node.current:hover ~ .link-btn {
+                opacity: 1;
+            }
+
+            /* Keep visible when hovering the link itself */
+            .link-btn:hover {
+                opacity: 1;
+            }
+        }
             background-color: var(--sl-color-neutral-200);
             color: var(--sl-color-neutral-500);
         }
@@ -272,6 +313,55 @@
           }
         };
         this.saveState();
+      }
+
+      deleteCurrentRoom() {
+          if (!this.currentRoom) return;
+          if (!confirm("Are you sure you want to delete this room?")) return;
+
+          const room = this.currentRoom;
+
+          // Disconnect all neighbors
+          const updates = {};
+          ['n','s','e','w'].forEach(dir => {
+              if (room.exits[dir]) {
+                   const opposites = { n: 's', s: 'n', e: 'w', w: 'e' };
+                   let dx = 0, dy = 0;
+                   if (dir === 'n') dy = 1;
+                   if (dir === 's') dy = -1;
+                   if (dir === 'e') dx = 1;
+                   if (dir === 'w') dx = -1;
+                   const targetId = `${room.x + dx},${room.y + dy}`;
+                   const targetRoom = this.rooms[targetId];
+                   if (targetRoom) {
+                       updates[targetId] = {
+                           ...targetRoom,
+                           exits: { ...targetRoom.exits, [opposites[dir]]: false }
+                       };
+                   }
+              }
+          });
+
+          // Create new rooms object without current room and with neighbor updates
+          const newRooms = { ...this.rooms, ...updates };
+          delete newRooms[room.id];
+          this.rooms = newRooms;
+
+          // Move selection to a neighbor if possible
+          const neighborId = Object.keys(updates)[0];
+          if (neighborId) {
+              const neighbor = this.rooms[neighborId];
+              this.currentX = neighbor.x;
+              this.currentY = neighbor.y;
+          } else if (Object.keys(this.rooms).length === 0) {
+              // Map empty - reset
+              this.createRoom(0,0,"Start");
+              this.currentX = 0;
+              this.currentY = 0;
+          }
+          // Else just stay at currentX/Y (now empty space)
+
+          this.saveState();
       }
 
       updateCurrentRoom(updates) {
@@ -517,8 +607,9 @@
         }
       }
 
-      toggleConnection(dir) {
-        if (!this.currentRoom) return;
+      toggleConnection(dir, roomId = null) {
+        const sourceRoom = roomId ? this.rooms[roomId] : this.currentRoom;
+        if (!sourceRoom) return;
 
         let dx = 0, dy = 0;
         if (dir === 'n') dy = 1;
@@ -526,15 +617,15 @@
         if (dir === 'e') dx = 1;
         if (dir === 'w') dx = -1;
 
-        const targetX = this.currentX + dx;
-        const targetY = this.currentY + dy;
+        const targetX = sourceRoom.x + dx;
+        const targetY = sourceRoom.y + dy;
         const targetId = `${targetX},${targetY}`;
         const targetRoom = this.rooms[targetId];
 
         if (!targetRoom) return;
 
-        // Toggle exit on current room
-        const currentExits = { ...this.currentRoom.exits };
+        // Toggle exit on source room
+        const currentExits = { ...sourceRoom.exits };
         const isConnected = !!currentExits[dir];
         currentExits[dir] = !isConnected;
 
@@ -545,7 +636,7 @@
 
         this.rooms = {
             ...this.rooms,
-            [this.currentRoom.id]: { ...this.currentRoom, exits: currentExits },
+            [sourceRoom.id]: { ...sourceRoom, exits: currentExits },
             [targetId]: { ...targetRoom, exits: targetExits }
         };
 
@@ -630,9 +721,6 @@
               if (roomEl.classList.contains('phantom')) {
                   const dir = roomEl.dataset.dir;
                   if (dir) this.addRoomAt(dir);
-              } else if (roomEl.classList.contains('link')) {
-                  const dir = roomEl.dataset.dir;
-                  if (dir) this.toggleConnection(dir);
               } else {
                   // Standard room
                   const x = parseInt(roomEl.dataset.x);
@@ -641,6 +729,13 @@
                       this.currentX = x;
                       this.currentY = y;
                   }
+              }
+          } else {
+              // Check for connector click (REMOVED, using buttons now) or new link-btn
+              const linkBtn = target.closest('.link-btn');
+              if (linkBtn) {
+                   const dir = linkBtn.dataset.dir;
+                   if (dir) this.toggleConnection(dir);
               }
           }
       }
@@ -655,11 +750,17 @@
             <div class="details-panel" @mousedown=${(e) => e.stopPropagation()}>
                 <div class="details-header">
                     <span>Room Details</span>
-                    <sl-switch
-                        size="small"
-                        ?checked=${room.explored}
-                        @sl-change=${(e) => this.updateCurrentRoom({ explored: e.target.checked })}
-                    >Explored</sl-switch>
+                    <div style="display: flex; gap: var(--sl-spacing-small);">
+                         <sl-switch
+                            style="display: flex"
+                            size="small"
+                            ?checked=${room.explored}
+                            @sl-change=${(e) => this.updateCurrentRoom({ explored: e.target.checked })}
+                         >Explored</sl-switch>
+                         <sl-button size="small" variant="danger" outline @click=${this.deleteCurrentRoom} title="Delete Room">
+                             <sl-icon slot="prefix" name="trash"></sl-icon>
+                         </sl-button>
+                    </div>
                 </div>
 
                 <sl-input
@@ -760,14 +861,30 @@
                      const linkTop = (-this.currentY * this.TILE_SIZE) - (dy * this.TILE_SIZE * 0.5);
 
                      return html`
-                        <div
-                            class="room-node link"
+                        <sl-button
+                            class="link-btn"
+                            size="small"
                             style="left: ${linkLeft}px; top: ${linkTop}px;"
                             data-dir="${dir}"
                             title="Connect"
                         >
-                            <sl-icon name="link-45deg"></sl-icon>
-                        </div>
+                            <sl-icon name="link-45deg" slot="prefix"></sl-icon>
+                        </sl-button>
+                     `;
+                 } else {
+                     // Connected - show Unlink button
+                     const linkLeft = (this.currentX * this.TILE_SIZE) + (dx * this.TILE_SIZE * 0.5);
+                     const linkTop = (-this.currentY * this.TILE_SIZE) - (dy * this.TILE_SIZE * 0.5);
+                     return html`
+                        <sl-button
+                            class="link-btn unlink-btn"
+                            size="small"
+                            style="left: ${linkLeft}px; top: ${linkTop}px;"
+                            data-dir="${dir}"
+                            title="Disconnect"
+                        >
+                            <sl-icon name="x-lg" slot="prefix"></sl-icon>
+                        </sl-button>
                      `;
                  }
                  return '';
