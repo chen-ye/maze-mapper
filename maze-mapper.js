@@ -159,15 +159,21 @@
                 opacity: 0;
             }
 
-            /* Show when hovering the current room (which precedes them in DOM) */
-            .room-node.current:hover ~ .link-btn {
-                opacity: 1;
-            }
-
-            /* Keep visible when hovering the link itself */
+            /* Show when hovering the link itself */
             .link-btn:hover {
                 opacity: 1;
             }
+        }
+
+        @media (hover: none) {
+           /* On touch, hide non-adjacent links */
+           .link-btn:not(.adjacent) {
+               display: none;
+           }
+           /* Adjacent ones are visible */
+           .link-btn.adjacent {
+               opacity: 1;
+           }
         }
             background-color: var(--sl-color-neutral-200);
             color: var(--sl-color-neutral-500);
@@ -835,73 +841,98 @@
         });
       }
 
-      renderPhantoms() {
-        if(!this.currentRoom) return null;
+      renderControls() {
+        const controls = [];
 
-        const DIRECTIONS = [
-          { dir: 'n', dx: 0, dy: 1 },
-          { dir: 's', dx: 0, dy: -1 },
-          { dir: 'e', dx: 1, dy: 0 },
-          { dir: 'w', dx: -1, dy: 0 }
-        ];
+        // 1. "Add Room" Phantoms (Only for current room's empty neighbors)
+        if (this.currentRoom) {
+             const DIRECTIONS = [
+               { dir: 'n', dx: 0, dy: 1 },
+               { dir: 's', dx: 0, dy: -1 },
+               { dir: 'e', dx: 1, dy: 0 },
+               { dir: 'w', dx: -1, dy: 0 }
+             ];
 
-        return repeat(DIRECTIONS, (d) => d.dir, ({dir, dx, dy}) => {
-             const targetX = this.currentX + dx;
-             const targetY = this.currentY + dy;
-             const targetId = `${targetX},${targetY}`;
+             DIRECTIONS.forEach(({dir, dx, dy}) => {
+                 const targetX = this.currentX + dx;
+                 const targetY = this.currentY + dy;
+                 const targetId = `${targetX},${targetY}`;
 
-             const left = targetX * this.TILE_SIZE;
-             const top = -targetY * this.TILE_SIZE;
-
-             // If room exists...
-             if(this.rooms[targetId]) {
-                 // Check if NOT connected to current room
-                 if (!this.currentRoom.exits[dir]) {
-                     const linkLeft = (this.currentX * this.TILE_SIZE) + (dx * this.TILE_SIZE * 0.5);
-                     const linkTop = (-this.currentY * this.TILE_SIZE) - (dy * this.TILE_SIZE * 0.5);
-
-                     return html`
-                        <sl-button
-                            class="link-btn"
-                            size="small"
-                            style="left: ${linkLeft}px; top: ${linkTop}px;"
+                 // If room does NOT exist, render Add button
+                 if(!this.rooms[targetId]) {
+                      const left = targetX * this.TILE_SIZE;
+                      const top = -targetY * this.TILE_SIZE;
+                      controls.push(html`
+                        <div
+                            class="room-node phantom"
+                            style="left: ${left}px; top: ${top}px;"
                             data-dir="${dir}"
-                            title="Connect"
+                            title="Add Room"
                         >
-                            <sl-icon name="link-45deg" slot="prefix"></sl-icon>
-                        </sl-button>
-                     `;
-                 } else {
-                     // Connected - show Unlink button
-                     const linkLeft = (this.currentX * this.TILE_SIZE) + (dx * this.TILE_SIZE * 0.5);
-                     const linkTop = (-this.currentY * this.TILE_SIZE) - (dy * this.TILE_SIZE * 0.5);
-                     return html`
-                        <sl-button
-                            class="link-btn unlink-btn"
-                            size="small"
-                            style="left: ${linkLeft}px; top: ${linkTop}px;"
-                            data-dir="${dir}"
-                            title="Disconnect"
-                        >
-                            <sl-icon name="x-lg" slot="prefix"></sl-icon>
-                        </sl-button>
-                     `;
+                            <sl-icon name="plus"></sl-icon>
+                        </div>
+                     `);
                  }
-                 return '';
-             }
+             });
+        }
 
-             // Otherwise show phantom (create new)
-             return html`
-                <div
-                    class="room-node phantom"
-                    style="left: ${left}px; top: ${top}px;"
-                    data-dir="${dir}"
-                    title="Add Room"
-                >
-                    <sl-icon name="plus"></sl-icon>
-                </div>
-             `;
+        // 2. Global Links/Unlinks (Check all rooms for unique edges)
+        // We iterate all rooms and check East and South neighbors to cover all horizontal/vertical edges exactly once.
+        Object.values(this.rooms).forEach(room => {
+             // Directions to check (East and South)
+             const CHECKS = [
+                 { dir: 'e', dx: 1, dy: 0 },
+                 { dir: 's', dx: 0, dy: -1 }
+             ];
+
+             CHECKS.forEach(({dir, dx, dy}) => {
+                 const neighborX = room.x + dx;
+                 const neighborY = room.y + dy;
+                 const neighborId = `${neighborX},${neighborY}`;
+                 const neighbor = this.rooms[neighborId];
+
+                 if (neighbor) {
+                     // Determine if this edge is adjacent to current selection (for touch visibility)
+                     const isAdjacent = (this.currentRoom && (this.currentRoom.id === room.id || this.currentRoom.id === neighbor.id));
+                     const adjacentClass = isAdjacent ? 'adjacent' : '';
+
+                     const linkLeft = (room.x * this.TILE_SIZE) + (dx * this.TILE_SIZE * 0.5);
+                     const linkTop = (-room.y * this.TILE_SIZE) - (dy * this.TILE_SIZE * 0.5);
+
+                     if (room.exits[dir]) {
+                         // Connected -> show Unlink
+                         controls.push(html`
+                            <sl-button
+                                class="link-btn unlink-btn ${adjacentClass}"
+                                size="small"
+                                style="left: ${linkLeft}px; top: ${linkTop}px;"
+                                data-dir="${dir}"
+                                data-room-id="${room.id}"
+                                title="Disconnect"
+                            >
+                                <sl-icon name="x-lg" slot="prefix"></sl-icon>
+                            </sl-button>
+                         `);
+                     } else {
+                         // Unconnected -> show Link
+                         controls.push(html`
+                            <sl-button
+                                class="link-btn ${adjacentClass}"
+                                size="small"
+                                style="left: ${linkLeft}px; top: ${linkTop}px;"
+                                data-dir="${dir}"
+                                data-room-id="${room.id}"
+                                title="Connect"
+                            >
+                                <sl-icon name="link-45deg" slot="prefix"></sl-icon>
+                            </sl-button>
+                         `);
+                     }
+                 }
+             });
         });
+
+        return controls;
       }
 
       render() {
@@ -919,8 +950,8 @@
             @wheel=${this.handleWheel}
           >
             <div class="map-world">
-              ${this.renderPhantoms()}
               ${this.renderMap()}
+              ${this.renderControls()}
             </div>
           </div>
 
